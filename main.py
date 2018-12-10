@@ -2,12 +2,14 @@ import cv2
 import numpy as np
 import vehicles
 import time
+import imutils
+import PlateDetection as licPlateDetect
 
 cnt_up=0
 cnt_down=0
 
 
-cap=cv2.VideoCapture("surveillance.m4v")
+cap=cv2.VideoCapture("testvideos/1.mp4")
 
 #Get width and height of video
 
@@ -59,9 +61,18 @@ cars = []
 max_p_age = 5
 pid = 1
 
-
+#Control lines
+fline_pos = 150
+sline_pos = 400
+fline_dict = {}
+last_computed = (-1,-1)
+x_const = 30
+dist = 5 
+xs_const = 50
 while(cap.isOpened()):
     ret,frame=cap.read()
+    #transpose(image, image)
+    #frame = imutils.rotate(frame, -90)
     for i in cars:
         i.age_one()
     fgmask=fgbg.apply(frame)
@@ -85,16 +96,19 @@ while(cap.isOpened()):
         _, countours0,hierarchy=cv2.findContours(mask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
         for cnt in countours0:
             area=cv2.contourArea(cnt)
-            print(area)
+            #print(area)
+            #print(cnt)
+            fline_counter = False
+            sline_counter = False
             if area>areaTH:
                 ####Tracking######
                 m=cv2.moments(cnt)
                 cx=int(m['m10']/m['m00'])
                 cy=int(m['m01']/m['m00'])
                 x,y,w,h=cv2.boundingRect(cnt)
-
+                #print(str(x) + " " + str(y) + " " + str(w) + " " + str(h))
                 new=True
-                if cy in range(up_limit,down_limit):
+                """if cy in range(up_limit,down_limit):
                     for i in cars:
                         if abs(x - i.getX()) <= w and abs(y - i.getY()) <= h:
                             new = False
@@ -121,26 +135,80 @@ while(cap.isOpened()):
                         p=vehicles.Car(pid,cx,cy,max_p_age)
                         cars.append(p)
                         pid+=1
+"""
+                #cv2.circle(frame,(cx,cy),5,(0,0,255),-1)
+                #img=cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
+                if( fline_pos >= cy - 20 and fline_pos <= cy + 20):
+                    fline_counter = True
+                    already_there = False
+                    crop_vehicle = frame[y+int(h/2):y+h, x:x+w]
+                    cv2.imwrite("firstPass.jpg", crop_vehicle)
+                    #cv2.imshow("cropped_first", crop_vehicle)
+                    for key, value in fline_dict.items():
+                        if(abs(key - x) < x_const):
+                            already_there = True
+                            
+                    if (not already_there):
+                        fline_dict[x] = time.time()
+                if( sline_pos >= cy - 20 and sline_pos <= cy + 20):
+                    sline_counter = True
+                    crop_vehicle = frame[y+int(h/2):y+h, x:x+w]
+                    cv2.imwrite("secondPass.jpg", crop_vehicle)
+                    """licPlate = licPlateDetect.main(crop_vehicle)
+                    file = open("plates.txt", "a")
+                    file.write(str(licPlate))
+                    """#cv2.imshow("cropped_second", crop_vehicle)
+                    for key, value in fline_dict.items():
+                        if(abs(key - x) < xs_const):
+                            speed = dist / (time.time() - value)
+                            speed *= 3.6 # converting to kmh
+                            last_computed = (key, speed)
+                            break
+                cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
+                #print(cy)
+            if(last_computed[0] != -1):
+                
+                #print(licPlate)
+                if last_computed[0] in fline_dict:
+                    del fline_dict[last_computed[0]]
+                cv2.putText(
+                        frame,
+                        'Speed: ' + str(last_computed[1]),
+                        (last_computed[0], 200),
+                        font,
+                        0.5,
+                        (0xFF, 0xFF, 0xFF),
+                        1,
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        )    
+            if fline_counter == 1:
+                cv2.line(frame, (0, fline_pos), (len(frame[0]), fline_pos), (0, 0xFF, 0), 5)
+            else:
+                cv2.line(frame, (0, fline_pos), (len(frame[0]), fline_pos), (0, 0, 0xFF), 5)
 
-                cv2.circle(frame,(cx,cy),5,(0,0,255),-1)
-                img=cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
+            if sline_counter == 1:
+                cv2.line(frame, (0, sline_pos), (len(frame[0]), sline_pos), (0, 0xFF, 0), 5)
+            else:
+                cv2.line(frame, (0, sline_pos), (len(frame[0]), sline_pos), (0, 0, 0xFF), 5) 
+            
+            #for i in cars:
+            #    cv2.putText(frame, str(i.getId()), (i.getX(), i.getY()), font, 0.3, i.getRGB(), 1, cv2.LINE_AA)
 
-        for i in cars:
-            cv2.putText(frame, str(i.getId()), (i.getX(), i.getY()), font, 0.3, i.getRGB(), 1, cv2.LINE_AA)
 
 
 
-
-        str_up='UP: '+str(cnt_up)
-        str_down='DOWN: '+str(cnt_down)
-        frame=cv2.polylines(frame,[pts_L1],False,line_down_color,thickness=2)
-        frame=cv2.polylines(frame,[pts_L2],False,line_up_color,thickness=2)
-        frame=cv2.polylines(frame,[pts_L3],False,(255,255,255),thickness=1)
-        frame=cv2.polylines(frame,[pts_L4],False,(255,255,255),thickness=1)
-        cv2.putText(frame, str_up, (10, 40), font, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.putText(frame, str_up, (10, 40), font, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
-        cv2.putText(frame, str_down, (10, 90), font, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.putText(frame, str_down, (10, 90), font, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
+        #str_up='UP: '+str(cnt_up)
+        #str_down='DOWN: '+str(cnt_down)
+        #frame=cv2.polylines(frame,[pts_L1],False,line_down_color,thickness=2)
+        #frame=cv2.polylines(frame,[pts_L2],False,line_up_color,thickness=2)
+        #frame=cv2.polylines(frame,[pts_L3],False,(255,255,255),thickness=1)
+        #frame=cv2.polylines(frame,[pts_L4],False,(255,255,255),thickness=1)
+        #cv2.putText(frame, str_up, (10, 40), font, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+        #cv2.putText(frame, str_up, (10, 40), font, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+        #cv2.putText(frame, str_down, (10, 90), font, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+        #cv2.putText(frame, str_down, (10, 90), font, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
+        #cv2.namedWindow('Frame',cv2.WINDOW_NORMAL)
+        #cv2.resizeWindow('Frame', 1000,1000)
         cv2.imshow('Frame',frame)
 
         if cv2.waitKey(1)&0xff==ord('q'):
